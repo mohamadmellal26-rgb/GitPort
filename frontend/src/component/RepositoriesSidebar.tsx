@@ -7,7 +7,6 @@ export interface Repository {
   owner: string;
   name: string;
   avatarUrl?: string;
-  isPrivate?: boolean; // إضافة خاصية تحديد خافية/عامة المستودع
 }
 
 interface RepositoriesSidebarProps {
@@ -63,7 +62,7 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
         }
       }
 
-      // 2. جلب المستودعات وفلترتها بحسب الخصوصية والملكية
+      // 2. جلب المستودعات وفلترتها مباشرة قبل إنهاء التحميل
       try {
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
@@ -77,20 +76,20 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
         if (response.ok) {
           const data: Repository[] = await response.json();
           
-          // تصفية المستودعات:
-          // إظهار المستودع إذا كان عاماً (isPrivate == false) 
-          // أو إذا كان خاصاً والمستخدم الحالي هو مالك المستودع
-          const accessibleRepos = data.filter((repo) => {
-            const isOwner = username && repo.owner.toLowerCase() === username.toLowerCase();
-            return !repo.isPrivate || isOwner;
-          });
-
-          setRepositories(accessibleRepos);
+          if (username) {
+            // تصفية المستودعات بحيث تقتصر على مستودعات المستخدم فقط
+            const userRepos = data.filter(
+              (repo) => repo.owner.toLowerCase() === username.toLowerCase()
+            );
+            setRepositories(userRepos);
+          } else {
+            setRepositories(data);
+          }
         }
       } catch (err) {
         console.error('Failed to fetch repositories:', err);
       } finally {
-        setLoading(false);
+        setLoading(false); // لا يتم إيقاف التحميل إلا بعد إتمام عملية التصفية
       }
     };
 
@@ -158,7 +157,6 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
               <Link to={`/${repo.owner}/${repo.name}`} className={styles.repoLink}>
                 <span className={styles.repoOwner}>{repo.owner}/</span>
                 <span className={styles.repoName}>{repo.name}</span>
-                {repo.isPrivate && <span className={styles.privateLabel}>Private</span>}
               </Link>
             </li>
           ))}
