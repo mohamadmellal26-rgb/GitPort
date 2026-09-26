@@ -25,7 +25,6 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    // قراءة أولية سريعة تجنباً لإغلاق الصفحة أثناء التحميل
     return !!localStorage.getItem('token');
   });
 
@@ -48,7 +47,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (response.ok) {
         setIsAuthenticated(true);
       } else {
-        // لا تمسح التوكن فوراً إلا إذا كان الرد صريحاً بـ 401 Unauthorized
         if (response.status === 401) {
           logout();
         }
@@ -77,7 +75,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
+// ✅ تصحيح النوع إلى React.ReactNode بدلاً من JSX.Element لحل مشكلة البناء
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
@@ -88,10 +87,11 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
     return <Navigate to="/login" replace />;
   }
 
-  return children;
+  return <>{children}</>;
 };
 
-const PublicOnlyRoute = ({ children }: { children: JSX.Element }) => {
+// ✅ تصحيح النوع إلى React.ReactNode بدلاً من JSX.Element لحل مشكلة البناء
+const PublicOnlyRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
@@ -102,7 +102,7 @@ const PublicOnlyRoute = ({ children }: { children: JSX.Element }) => {
     return <Navigate to="/" replace />;
   }
 
-  return children;
+  return <>{children}</>;
 };
 
 function App() {
@@ -127,7 +127,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* مسار عرض المستودع */}
           <Route path="/:owner/:repo" element={<RepositoryView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
