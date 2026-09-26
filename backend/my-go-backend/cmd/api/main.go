@@ -25,6 +25,11 @@ var jwtSecret = []byte(getEnv("JWT_SECRET", "super-secret-gitport-key-2026"))
 
 const storageDir = "./git-data"
 
+type User struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+}
+
 type CreateRepoRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -69,28 +74,28 @@ func main() {
 	}
 
 	createUsersTableQuery := `
-    CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL
-    );`
+	CREATE TABLE IF NOT EXISTS users (
+		id SERIAL PRIMARY KEY,
+		username VARCHAR(50) UNIQUE NOT NULL,
+		password VARCHAR(255) NOT NULL
+	);`
 	if _, err := db.Exec(createUsersTableQuery); err != nil {
 		log.Fatalf("فشل إنشاء جدول المستخدمين: %v", err)
 	}
 
 	createReposTableQuery := `
-    CREATE TABLE IF NOT EXISTS repositories (
-        id SERIAL PRIMARY KEY,
-        owner VARCHAR(50) NOT NULL,
-        name VARCHAR(100) NOT NULL,
-        description TEXT,
-        is_private BOOLEAN DEFAULT FALSE,
-        add_readme BOOLEAN DEFAULT FALSE,
-        gitignore VARCHAR(50) DEFAULT 'None',
-        license VARCHAR(50) DEFAULT 'None',
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(owner, name)
-    );`
+	CREATE TABLE IF NOT EXISTS repositories (
+		id SERIAL PRIMARY KEY,
+		owner VARCHAR(50) NOT NULL,
+		name VARCHAR(100) NOT NULL,
+		description TEXT,
+		is_private BOOLEAN DEFAULT FALSE,
+		add_readme BOOLEAN DEFAULT FALSE,
+		gitignore VARCHAR(50) DEFAULT 'None',
+		license VARCHAR(50) DEFAULT 'None',
+		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(owner, name)
+	);`
 	if _, err := db.Exec(createReposTableQuery); err != nil {
 		log.Fatalf("فشل إنشاء جدول المستودعات: %v", err)
 	}
@@ -103,17 +108,24 @@ func main() {
 		BodyLimit: 100 * 1024 * 1024,
 	})
 
+	// ✅ حل مشكلة CORS بالكامل وتغطية كافة النطاقات بطلبات Preflight
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:5173",
-		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
-		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
-		AllowCredentials: true,
+		AllowOrigins:     "*",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Requested-With",
+		AllowMethods:     "GET, POST, HEAD, PUT, DELETE, PATCH, OPTIONS",
+		AllowCredentials: false,
 	}))
+
+	// معالجة صريحة لطلبات OPTIONS لمنع استجابات 204 المفقودة لـ Header Access-Control
+	app.Options("*", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
 	app.Use(logger.New())
 
 	api := app.Group("/api/v1")
 
-	// استدعاء مسارات التسجيل وتسجيل الدخول من الملف المنفصل auth.go
+	// استدعاء مسارات التسجيل وتسجيل الدخول من ملف auth.go
 	RegisterRoutes(api, db, jwtSecret)
 
 	api.Get("/repositories", func(c *fiber.Ctx) error {
@@ -141,7 +153,7 @@ func main() {
 
 		var r Repository
 		query := `SELECT id, owner, name, COALESCE(description, ''), is_private, add_readme, COALESCE(gitignore, 'None'), COALESCE(license, 'None')
-                  FROM repositories WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2)`
+				  FROM repositories WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2)`
 
 		err := db.QueryRow(query, owner, repoName).Scan(
 			&r.ID, &r.Owner, &r.Name, &r.Description, &r.IsPrivate, &r.AddReadme, &r.Gitignore, &r.License,
@@ -269,10 +281,10 @@ func main() {
 
 		var repoID int
 		insertQuery := `
-            INSERT INTO repositories (owner, name, description, is_private, add_readme, gitignore, license)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id;
-        `
+			INSERT INTO repositories (owner, name, description, is_private, add_readme, gitignore, license)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			RETURNING id;
+		`
 
 		err := db.QueryRow(
 			insertQuery,
