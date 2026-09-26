@@ -137,7 +137,11 @@ function App() {
               </ProtectedRoute>
             }
           />
+          
+          {/* مسار فتح المستودعات المباشر للمعاينة */}
           <Route path="/:owner/:repo" element={<RepositoryView />} />
+          <Route path="/:owner/:repo/*" element={<RepositoryView />} />
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

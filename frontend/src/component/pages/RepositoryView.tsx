@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Header from '../Header';
 import styles from './RepositoryView.module.css';
 
-// تحديد عنوان الـ API تلقائياً حسب بيئة التشغيل
 const API_BASE_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:8080' 
   : 'https://gitport.onrender.com';
@@ -19,20 +18,21 @@ interface RepositoryData {
 export const RepositoryView: React.FC = () => {
   const { owner, repo } = useParams<{ owner: string; repo: string }>();
   const navigate = useNavigate();
+
   const [repoData, setRepoData] = useState<RepositoryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<'code' | 'issues' | 'pulls' | 'settings'>('code');
-  
+
   const [files, setFiles] = useState<string[]>([]);
   const [hasCommits, setHasCommits] = useState(false);
 
-  // حالات فتح وقراءة وتعديل الملف
+  // حالات قراءة وتعديل الملفات
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [loadingFile, setLoadingFile] = useState<boolean>(false);
-  
-  // حالات وضع التعديل وإنشاء ملف جديد
+
+  // حالات الإنشاء والتعديل والحذف
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isCreatingNew, setIsCreatingNew] = useState<boolean>(false);
   const [newFilePath, setNewFilePath] = useState<string>('');
@@ -43,6 +43,7 @@ export const RepositoryView: React.FC = () => {
 
   const [currentUser, setCurrentUser] = useState<string | null>(null);
 
+  // استخراج المستخدم الحالي من التوكن
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
@@ -58,6 +59,7 @@ export const RepositoryView: React.FC = () => {
     }
   }, []);
 
+  // جلب بيانات المستودع والملفات
   const fetchRepoDataAndFiles = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
@@ -118,7 +120,7 @@ export const RepositoryView: React.FC = () => {
     }
   };
 
-  // حفظ الملف (إنشاء أو تعديل)
+  // حفظ الملف (للمالك فقط)
   const handleSaveFile = async () => {
     const targetPath = isCreatingNew ? newFilePath.trim() : selectedFile;
     if (!targetPath) {
@@ -167,12 +169,12 @@ export const RepositoryView: React.FC = () => {
     }
   };
 
-  // حذف ملف معين
+  // حذف ملف (للمالك فقط)
   const handleDeleteFile = async (filePathToDelete?: string) => {
     const targetPath = filePathToDelete || selectedFile;
     if (!targetPath) return;
 
-    if (!window.confirm(`هل أنت تأكد من رغبتك في حذف الملف "${targetPath}"؟`)) {
+    if (!window.confirm(`هل أنت متأكد من رغبتك في حذف الملف "${targetPath}"؟`)) {
       return;
     }
 
@@ -213,7 +215,7 @@ export const RepositoryView: React.FC = () => {
     }
   };
 
-  // حذف المستودع بالكامل
+  // حذف المستودع الكامل (للمالك فقط)
   const handleDeleteRepository = async () => {
     if (!repoData) return;
 
@@ -241,7 +243,7 @@ export const RepositoryView: React.FC = () => {
 
       if (response.ok) {
         alert('تم حذف المستودع بنجاح!');
-        navigate('/'); // إعادة التوجيه إلى الصفحة الرئيسية
+        navigate('/');
       } else {
         const errData = await response.json();
         alert(errData.error || 'فشل حذف المستودع');
@@ -254,7 +256,8 @@ export const RepositoryView: React.FC = () => {
     }
   };
 
-  const isOwner = currentUser && repoData && currentUser.toLowerCase() === repoData.owner.toLowerCase();
+  // التحقق من الملكية
+  const isOwner = Boolean(currentUser && repoData && currentUser.toLowerCase() === repoData.owner.toLowerCase());
 
   if (loading) {
     return <div style={{ padding: 40, color: '#1f2328' }}>Loading repository...</div>;
@@ -263,7 +266,7 @@ export const RepositoryView: React.FC = () => {
   if (notFound || !repoData) {
     return (
       <div className={styles.pageWrapper}>
-        <Header />
+        <Header username={currentUser || 'User'} />
         <div style={{ padding: 40, textAlign: 'center', color: '#1f2328' }}>
           <h2>404 - Repository Not Found</h2>
         </div>
@@ -301,6 +304,25 @@ export const RepositoryView: React.FC = () => {
       </div>
 
       <main className={styles.mainContainer}>
+        {/* شريط تنبيه الوضع للزوار (غير المالك) */}
+        {!isOwner && (
+          <div style={{
+            background: '#fff8c5',
+            border: '1px solid rgba(212,167,44,0.4)',
+            color: '#57606a',
+            padding: '10px 16px',
+            borderRadius: '6px',
+            marginBottom: '16px',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <span>🔒</span>
+            <span><strong>Read-only mode:</strong> You are viewing {repoData.owner}'s repository. Editing and deletion are restricted to the repository owner.</span>
+          </div>
+        )}
+
         {activeTab === 'code' ? (
           <>
             <div className={styles.repoActionsHeader}>
@@ -320,7 +342,7 @@ export const RepositoryView: React.FC = () => {
             </div>
 
             {/* شاشة إنشاء ملف جديد */}
-            {isCreatingNew ? (
+            {isCreatingNew && isOwner ? (
               <div style={{ marginTop: '20px', border: '1px solid #d0d7de', borderRadius: '6px', background: '#fff', padding: '20px' }}>
                 <h3>Create new file</h3>
                 <div style={{ marginBottom: '15px' }}>
@@ -369,7 +391,7 @@ export const RepositoryView: React.FC = () => {
                 </div>
               </div>
             ) : selectedFile ? (
-              /* شاشة عرض أو تعديل أو حذف ملف موجود */
+              /* شاشة عرض أو تعديل الملف */
               <div style={{ marginTop: '20px', border: '1px solid #d0d7de', borderRadius: '6px', overflow: 'hidden' }}>
                 <div style={{ background: '#f6f8fa', padding: '12px 16px', borderBottom: '1px solid #d0d7de', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>📄 {selectedFile}</span>
@@ -403,7 +425,7 @@ export const RepositoryView: React.FC = () => {
                 <div style={{ padding: '16px', background: '#ffffff', overflowX: 'auto' }}>
                   {loadingFile ? (
                     <div>Loading file content...</div>
-                  ) : isEditing ? (
+                  ) : isEditing && isOwner ? (
                     <div>
                       <textarea
                         value={fileContent}
@@ -445,7 +467,7 @@ export const RepositoryView: React.FC = () => {
                 </div>
               </div>
             ) : hasCommits ? (
-              /* قائمة الملفات مع خيار الحذف المباشر */
+              /* قائمة الملفات */
               <div style={{ marginTop: '20px', border: '1px solid #d0d7de', borderRadius: '6px', overflow: 'hidden' }}>
                 <div style={{ background: '#f6f8fa', padding: '12px 16px', borderBottom: '1px solid #d0d7de', fontWeight: 'bold' }}>
                   Files ({files.length})
@@ -492,41 +514,36 @@ export const RepositoryView: React.FC = () => {
               </div>
             )}
           </>
-        ) : activeTab === 'settings' ? (
-          /* واجهة الإعدادات مع خيار حذف المستودع الكامل */
+        ) : activeTab === 'settings' && isOwner ? (
           <div style={{ marginTop: '20px', border: '1px solid #d0d7de', borderRadius: '6px', background: '#ffffff', padding: '24px' }}>
             <h2 style={{ fontSize: '20px', marginBottom: '16px', borderBottom: '1px solid #d0d7de', paddingBottom: '10px' }}>Repository Settings</h2>
             
-            {isOwner ? (
-              <div style={{ marginTop: '30px' }}>
-                <h3 style={{ fontSize: '16px', color: '#cf222e', marginBottom: '8px' }}>Danger Zone</h3>
-                <div style={{ border: '1px solid #cf222e', borderRadius: '6px', padding: '16px', background: '#fff8f8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <strong style={{ display: 'block', color: '#24292f' }}>Delete this repository</strong>
-                    <span style={{ fontSize: '13px', color: '#57606a' }}>
-                      Once you delete a repository, there is no going back. Please be certain.
-                    </span>
-                  </div>
-                  <button
-                    disabled={isDeletingRepo}
-                    onClick={handleDeleteRepository}
-                    style={{
-                      background: '#cf222e',
-                      color: '#ffffff',
-                      border: 'none',
-                      padding: '8px 16px',
-                      borderRadius: '6px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {isDeletingRepo ? 'Deleting...' : 'Delete this repository'}
-                  </button>
+            <div style={{ marginTop: '30px' }}>
+              <h3 style={{ fontSize: '16px', color: '#cf222e', marginBottom: '8px' }}>Danger Zone</h3>
+              <div style={{ border: '1px solid #cf222e', borderRadius: '6px', padding: '16px', background: '#fff8f8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <strong style={{ display: 'block', color: '#24292f' }}>Delete this repository</strong>
+                  <span style={{ fontSize: '13px', color: '#57606a' }}>
+                    Once you delete a repository, there is no going back. Please be certain.
+                  </span>
                 </div>
+                <button
+                  disabled={isDeletingRepo}
+                  onClick={handleDeleteRepository}
+                  style={{
+                    background: '#cf222e',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {isDeletingRepo ? 'Deleting...' : 'Delete this repository'}
+                </button>
               </div>
-            ) : (
-              <p style={{ color: '#57606a' }}>You do not have administrative permissions to view or change settings for this repository.</p>
-            )}
+            </div>
           </div>
         ) : (
           <div style={{ padding: '40px', textAlign: 'center', color: '#57606a' }}>
