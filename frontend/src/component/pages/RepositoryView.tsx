@@ -263,12 +263,18 @@ export const RepositoryView: React.FC = () => {
     return <div style={{ padding: 40, color: '#1f2328' }}>Loading repository...</div>;
   }
 
-  if (notFound || !repoData) {
+  // حظر الوصول تماماً إذا كان المستودع Private والمستخدم الحالي ليس المالك
+  const isPrivateAndForbidden = repoData?.is_private && !isOwner;
+
+  if (notFound || !repoData || isPrivateAndForbidden) {
     return (
       <div className={styles.pageWrapper}>
         <Header username={currentUser || 'User'} />
         <div style={{ padding: 40, textAlign: 'center', color: '#1f2328' }}>
           <h2>404 - Repository Not Found</h2>
+          <p style={{ color: '#57606a', marginTop: '8px' }}>
+            This repository is either private or does not exist.
+          </p>
         </div>
       </div>
     );
@@ -304,25 +310,6 @@ export const RepositoryView: React.FC = () => {
       </div>
 
       <main className={styles.mainContainer}>
-        {/* شريط تنبيه الوضع للزوار (غير المالك) */}
-        {!isOwner && (
-          <div style={{
-            background: '#fff8c5',
-            border: '1px solid rgba(212,167,44,0.4)',
-            color: '#57606a',
-            padding: '10px 16px',
-            borderRadius: '6px',
-            marginBottom: '16px',
-            fontSize: '13px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <span>🔒</span>
-            <span><strong>Read-only mode:</strong> You are viewing {repoData.owner}'s repository. Editing and deletion are restricted to the repository owner.</span>
-          </div>
-        )}
-
         {activeTab === 'code' ? (
           <>
             <div className={styles.repoActionsHeader}>
