@@ -25,11 +25,6 @@ var jwtSecret = []byte(getEnv("JWT_SECRET", "super-secret-gitport-key-2026"))
 
 const storageDir = "./git-data"
 
-type User struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-}
-
 type CreateRepoRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -108,7 +103,6 @@ func main() {
 		BodyLimit: 100 * 1024 * 1024,
 	})
 
-	// ✅ حل مشكلة CORS بالكامل وتغطية كافة النطاقات بطلبات Preflight
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     "*",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Requested-With",
@@ -116,7 +110,6 @@ func main() {
 		AllowCredentials: false,
 	}))
 
-	// معالجة صريحة لطلبات OPTIONS لمنع استجابات 204 المفقودة لـ Header Access-Control
 	app.Options("*", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusNoContent)
 	})
@@ -125,7 +118,6 @@ func main() {
 
 	api := app.Group("/api/v1")
 
-	// استدعاء مسارات التسجيل وتسجيل الدخول من ملف auth.go
 	RegisterRoutes(api, db, jwtSecret)
 
 	api.Get("/repositories", func(c *fiber.Ctx) error {
