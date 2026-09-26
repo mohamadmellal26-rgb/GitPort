@@ -1,0 +1,139 @@
+import React, { useEffect, useState, createContext, useContext } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import './App.css';
+import Home from './component/pages/home';
+import Login from './component/login';
+import NewRepository from './component/pages/NewRepository';
+import RepositoryView from './component/pages/RepositoryView';
+
+interface AuthContextType {
+  isAuthenticated: boolean;
+  loading: boolean;
+  checkAuth: () => Promise<void>;
+  logout: () => void;
+}
+
+const AuthContext = createContext<AuthContextType>({
+  isAuthenticated: false,
+  loading: true,
+  checkAuth: async () => {},
+  logout: () => {},
+});
+
+export const useAuth = () => useContext(AuthContext);
+
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    // قراءة أولية سريعة تجنباً لإغلاق الصفحة أثناء التحميل
+    return !!localStorage.getItem('token');
+  });
+
+  const checkAuth = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setIsAuthenticated(false);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8080/api/v1/me', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        setIsAuthenticated(true);
+      } else {
+        // لا تمسح التوكن فوراً إلا إذا كان الرد صريحاً بـ 401 Unauthorized
+        if (response.status === 401) {
+          logout();
+        }
+      }
+    } catch (error) {
+      console.error('خطأ في الاتصال بالباك إند:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setIsAuthenticated(false);
+  };
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ isAuthenticated, loading, checkAuth, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
+
+const PublicOnlyRoute = ({ children }: { children: JSX.Element }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+};
+
+function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route
+            path="/login"
+            element={
+              <PublicOnlyRoute>
+                <Login />
+              </PublicOnlyRoute>
+            }
+          />
+          <Route
+            path="/NewRepository"
+            element={
+              <ProtectedRoute>
+                <NewRepository />
+              </ProtectedRoute>
+            }
+          />
+          {/* مسار عرض المستودع */}
+          <Route path="/:owner/:repo" element={<RepositoryView />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
+
+export default App;

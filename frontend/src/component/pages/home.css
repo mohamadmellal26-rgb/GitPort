@@ -1,0 +1,31 @@
+/* App.css */
+
+/* إعادة ضبط الهوامش الأساسية للحاوية الرئيسية */
+#root {
+  min-height: 100vh;
+  background-color: #ffffff;
+  color: #1f2328;
+  display: flex;
+  flex-direction: column;
+}
+
+/* تخطيط الصفحة الرئيسي (الشريط الجانبي + التغذية Feed) */
+.appBody {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  max-width: 1280px; /* أو حسب العرض المطلوب للواجهة */
+  margin: 0 auto;
+}
+
+/* ضبط حجم وحجم نمو المكونات داخل التخطيط */
+.appBody > aside {
+  flex-shrink: 0; /* منع انكماش الشريط الجانبي */
+}
+
+.mainContent {
+  flex: 1;
+  padding: 24px 32px;
+  display: flex;
+  justify-content: center; /* توسيط الـ Feed داخل المساحة المتبقية */
+}

@@ -1,0 +1,299 @@
+.pageWrapper {
+  background-color: #ffffff;
+  color: #1f2328;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.subHeader {
+  background-color: #f6f8fa;
+  border-bottom: 1px solid #d0d7de;
+  padding-top: 16px;
+}
+
+.subHeaderContent {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+.repoBreadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.ownerText, .repoText {
+  color: #0969da;
+  text-decoration: none;
+}
+
+.ownerText:hover, .repoText:hover {
+  text-decoration: underline;
+}
+
+.divider {
+  color: #5760 Sat;
+}
+
+.badge {
+  font-size: 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  padding: 2px 8px;
+  color: #57606a;
+  font-weight: 500;
+}
+
+.tabsNav {
+  display: flex;
+  gap: 16px;
+}
+
+.tabBtn {
+  background: transparent;
+  border: none;
+  color: #57606a;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 2px solid transparent;
+}
+
+.tabBtn:hover {
+  color: #1f2328;
+}
+
+.activeTab {
+  color: #1f2328;
+  font-weight: 600;
+  border-bottom-color: #fd8c73;
+}
+
+.mainContainer {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+.repoActionsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.repoTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ownerAvatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+
+.repoTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2328;
+  margin: 0;
+}
+
+.visibilityBadge {
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #57606a;
+}
+
+.actionButtons {
+  display: flex;
+  gap: 8px;
+}
+
+.btnSecondary {
+  background-color: #f6f8fa;
+  border: 1px solid #d0d7de;
+  color: #24292f;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btnSecondary:hover {
+  background-color: #f3f4f6;
+}
+
+.btnPrimary {
+  background-color: #1f883d;
+  border: 1px solid rgba(31, 35, 40, 0.15);
+  color: #ffffff;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btnPrimary:hover {
+  background-color: #1a7f37;
+}
+
+.cardsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.card {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 24px;
+  background-color: #ffffff;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #1f2328;
+}
+
+.cardHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.card p {
+  font-size: 14px;
+  color: #57606a;
+  margin-bottom: 16px;
+}
+
+.setupBox {
+  border: 1px solid #0969da;
+  background-color: #ddf4ff;
+  border-radius: 6px 6px 0 0;
+  padding: 20px;
+}
+
+.setupHeader h2 {
+  font-size: 16px;
+  color: #1f2328;
+  margin: 0 0 16px 0;
+}
+
+.urlCopyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 4px;
+  margin-bottom: 16px;
+}
+
+.protocolGroup {
+  display: flex;
+}
+
+.protoBtn {
+  background: transparent;
+  border: none;
+  color: #57606a;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.protoBtnActive {
+  background-color: #f6f8fa;
+  color: #1f2328;
+  font-weight: 600;
+}
+
+.urlInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #1f2328;
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+  font-size: 13px;
+  outline: none;
+}
+
+.copyBtn {
+  background-color: #f6f8fa;
+  border: 1px solid #d0d7de;
+  color: #24292f;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.copyBtn:hover {
+  background-color: #f3f4f6;
+}
+
+.setupHint {
+  font-size: 13px;
+  color: #57606a;
+  margin: 0;
+}
+
+.setupHint a {
+  color: #0969da;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.setupHint a:hover {
+  text-decoration: underline;
+}
+
+.cmdBox {
+  border: 1px solid #d0d7de;
+  border-top: none;
+  padding: 20px;
+  background-color: #ffffff;
+}
+
+.cmdBox h3 {
+  font-size: 14px;
+  color: #1f2328;
+  margin: 0 0 12px 0;
+}
+
+.codeBlock {
+  background-color: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 16px;
+  color: #1f2328;
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+  overflow-x: auto;
+}
