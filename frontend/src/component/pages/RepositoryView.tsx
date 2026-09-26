@@ -38,6 +38,7 @@ export const RepositoryView: React.FC = () => {
   const [newFilePath, setNewFilePath] = useState<string>('');
   const [commitMessage, setCommitMessage] = useState<string>('');
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   const [currentUser, setCurrentUser] = useState<string | null>(null);
 
@@ -90,7 +91,7 @@ export const RepositoryView: React.FC = () => {
     }
   }, [owner, repo, fetchRepoDataAndFiles]);
 
-  // دالة فتح وقراءة الملف مع إضافة Timestamp لمنع الـ Caching
+  // فتح الملف وقراءته
   const handleOpenFile = async (filePath: string) => {
     setSelectedFile(filePath);
     setIsEditing(false);
@@ -116,7 +117,7 @@ export const RepositoryView: React.FC = () => {
     }
   };
 
-  // حفظ الملف (سواء تعديل ملف قديم أو إنشاء ملف جديد)
+  // حفظ الملف (إنشاء أو تعديل)
   const handleSaveFile = async () => {
     const targetPath = isCreatingNew ? newFilePath.trim() : selectedFile;
     if (!targetPath) {
@@ -151,10 +152,7 @@ export const RepositoryView: React.FC = () => {
         setIsCreatingNew(false);
         setCommitMessage('');
         
-        // تحديث قائمة الملفات والبيانات من السيرفر أولاً
         await fetchRepoDataAndFiles();
-        
-        // جلب المحتوى المحدث مباشرة مع منع التخزين المؤقت
         await handleOpenFile(targetPath);
       } else {
         const errData = await response.json();
@@ -165,6 +163,52 @@ export const RepositoryView: React.FC = () => {
       alert('حدث خطأ أثناء الاتصال بالخادم');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // حذف الملف
+  const handleDeleteFile = async (filePathToDelete?: string) => {
+    const targetPath = filePathToDelete || selectedFile;
+    if (!targetPath) return;
+
+    if (!window.confirm(`هل أنت تأكد من رغبتك في حذف الملف "${targetPath}"؟`)) {
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/repositories/${owner}/${repo}/delete-file`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          path: targetPath,
+          message: `Delete ${targetPath}`
+        })
+      });
+
+      if (response.ok) {
+        alert('تم حذف الملف بنجاح!');
+        setSelectedFile(null);
+        setIsEditing(false);
+        await fetchRepoDataAndFiles();
+      } else {
+        const errData = await response.json();
+        alert(errData.error || 'فشل حذف الملف');
+      }
+    } catch (err) {
+      console.error('Error deleting file:', err);
+      alert('حدث خطأ أثناء طلب الحذف');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -283,18 +327,27 @@ export const RepositoryView: React.FC = () => {
                 </div>
               </div>
             ) : selectedFile ? (
-              /* شاشة عرض أو تعديل ملف موجود */
+              /* شاشة عرض أو تعديل أو حذف ملف موجود */
               <div style={{ marginTop: '20px', border: '1px solid #d0d7de', borderRadius: '6px', overflow: 'hidden' }}>
                 <div style={{ background: '#f6f8fa', padding: '12px 16px', borderBottom: '1px solid #d0d7de', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>📄 {selectedFile}</span>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     {isOwner && !isEditing && (
-                      <button 
-                        onClick={() => setIsEditing(true)}
-                        style={{ cursor: 'pointer', padding: '4px 12px', borderRadius: '6px', border: '1px solid #d0d7de', background: '#238636', color: '#fff', fontWeight: 'bold' }}
-                      >
-                        Edit
-                      </button>
+                      <>
+                        <button 
+                          onClick={() => setIsEditing(true)}
+                          style={{ cursor: 'pointer', padding: '4px 12px', borderRadius: '6px', border: '1px solid #d0d7de', background: '#238636', color: '#fff', fontWeight: 'bold' }}
+                        >
+                          Edit
+                        </button>
+                        <button 
+                          disabled={isDeleting}
+                          onClick={() => handleDeleteFile()}
+                          style={{ cursor: 'pointer', padding: '4px 12px', borderRadius: '6px', border: '1px solid #d0d7de', background: '#cf222e', color: '#fff', fontWeight: 'bold' }}
+                        >
+                          {isDeleting ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </>
                     )}
                     <button 
                       onClick={() => { setSelectedFile(null); setIsEditing(false); }}
@@ -350,21 +403,31 @@ export const RepositoryView: React.FC = () => {
                 </div>
               </div>
             ) : hasCommits ? (
-              /* قائمة الملفات */
+              /* قائمة الملفات مع خيار الحذف المباشر */
               <div style={{ marginTop: '20px', border: '1px solid #d0d7de', borderRadius: '6px', overflow: 'hidden' }}>
                 <div style={{ background: '#f6f8fa', padding: '12px 16px', borderBottom: '1px solid #d0d7de', fontWeight: 'bold' }}>
                   Files ({files.length})
                 </div>
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {files.map((file, index) => (
-                    <li key={index} style={{ padding: '10px 16px', borderBottom: index < files.length - 1 ? '1px solid #d0d7de' : 'none', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span>📄</span>
-                      <span 
-                        onClick={() => handleOpenFile(file)}
-                        style={{ fontFamily: 'monospace', color: '#0969da', cursor: 'pointer', textDecoration: 'underline' }}
-                      >
-                        {file}
-                      </span>
+                    <li key={index} style={{ padding: '10px 16px', borderBottom: index < files.length - 1 ? '1px solid #d0d7de' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span>📄</span>
+                        <span 
+                          onClick={() => handleOpenFile(file)}
+                          style={{ fontFamily: 'monospace', color: '#0969da', cursor: 'pointer', textDecoration: 'underline' }}
+                        >
+                          {file}
+                        </span>
+                      </div>
+                      {isOwner && (
+                        <button
+                          onClick={() => handleDeleteFile(file)}
+                          style={{ background: 'transparent', border: 'none', color: '#cf222e', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                        >
+                          🗑️ Delete
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
