@@ -39,6 +39,7 @@ export const RepositoryView: React.FC = () => {
   const [commitMessage, setCommitMessage] = useState<string>('');
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [isDeletingRepo, setIsDeletingRepo] = useState<boolean>(false);
 
   const [currentUser, setCurrentUser] = useState<string | null>(null);
 
@@ -166,7 +167,7 @@ export const RepositoryView: React.FC = () => {
     }
   };
 
-  // حذف الملف
+  // حذف ملف معين
   const handleDeleteFile = async (filePathToDelete?: string) => {
     const targetPath = filePathToDelete || selectedFile;
     if (!targetPath) return;
@@ -209,6 +210,47 @@ export const RepositoryView: React.FC = () => {
       alert('حدث خطأ أثناء طلب الحذف');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // حذف المستودع بالكامل
+  const handleDeleteRepository = async () => {
+    if (!repoData) return;
+
+    const confirmText = prompt(`حذف المستودع إجراء نهائي ولا يمكن التراجع عنه.\nللتأكيد، يرجى كتابة اسم المستودع: ${repoData.name}`);
+    
+    if (confirmText !== repoData.name) {
+      alert('اسم المستودع غير مطابق. تم إلغاء عملية الحذف.');
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    setIsDeletingRepo(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/repositories/${owner}/${repo}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        alert('تم حذف المستودع بنجاح!');
+        navigate('/'); // إعادة التوجيه إلى الصفحة الرئيسية
+      } else {
+        const errData = await response.json();
+        alert(errData.error || 'فشل حذف المستودع');
+      }
+    } catch (err) {
+      console.error('Error deleting repository:', err);
+      alert('حدث خطأ أثناء الاتصال بالخادم');
+    } finally {
+      setIsDeletingRepo(false);
     }
   };
 
@@ -450,6 +492,42 @@ export const RepositoryView: React.FC = () => {
               </div>
             )}
           </>
+        ) : activeTab === 'settings' ? (
+          /* واجهة الإعدادات مع خيار حذف المستودع الكامل */
+          <div style={{ marginTop: '20px', border: '1px solid #d0d7de', borderRadius: '6px', background: '#ffffff', padding: '24px' }}>
+            <h2 style={{ fontSize: '20px', marginBottom: '16px', borderBottom: '1px solid #d0d7de', paddingBottom: '10px' }}>Repository Settings</h2>
+            
+            {isOwner ? (
+              <div style={{ marginTop: '30px' }}>
+                <h3 style={{ fontSize: '16px', color: '#cf222e', marginBottom: '8px' }}>Danger Zone</h3>
+                <div style={{ border: '1px solid #cf222e', borderRadius: '6px', padding: '16px', background: '#fff8f8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong style={{ display: 'block', color: '#24292f' }}>Delete this repository</strong>
+                    <span style={{ fontSize: '13px', color: '#57606a' }}>
+                      Once you delete a repository, there is no going back. Please be certain.
+                    </span>
+                  </div>
+                  <button
+                    disabled={isDeletingRepo}
+                    onClick={handleDeleteRepository}
+                    style={{
+                      background: '#cf222e',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {isDeletingRepo ? 'Deleting...' : 'Delete this repository'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p style={{ color: '#57606a' }}>You do not have administrative permissions to view or change settings for this repository.</p>
+            )}
+          </div>
         ) : (
           <div style={{ padding: '40px', textAlign: 'center', color: '#57606a' }}>
             <h3>{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} feature is coming soon!</h3>
