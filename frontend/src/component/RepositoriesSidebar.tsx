@@ -13,6 +13,11 @@ interface RepositoriesSidebarProps {
   onNewRepository?: () => void;
 }
 
+// تحديد عنوان الـ API ديناميكيًا حسب البيئة
+const API_BASE_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8080' 
+  : 'https://gitport.onrender.com';
+
 export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewRepository }) => {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,10 +27,28 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
 
   const navigate = useNavigate();
 
-  // 1. استخراج اسم المستخدم من JWT Token
+  // 1. استخراج اسم المستخدم من JWT Token أو me endpoint
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
+    const fetchCurrentUser = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.user?.username) {
+            setCurrentUser(data.user.username);
+            return;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to get user info from /me endpoint', e);
+      }
+
+      // Fallback: فك تشفير التوكن يدوياً
       try {
         const payloadBase64 = token.split('.')[1];
         const decodedPayload = JSON.parse(atob(payloadBase64));
@@ -35,10 +58,12 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
       } catch (err) {
         console.error('Error parsing token payload:', err);
       }
-    }
+    };
+
+    fetchCurrentUser();
   }, []);
 
-  // 2. جلب المستودعات من الـ Backend وتصفيتها
+  // 2. جلب المستودعات من الـ Backend
   useEffect(() => {
     const fetchRepositories = async () => {
       try {
@@ -51,22 +76,20 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
           headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const response = await fetch('http://localhost:8080/api/v1/repositories', {
+        const response = await fetch(`${API_BASE_URL}/api/v1/repositories`, {
           headers,
         });
 
         if (response.ok) {
           const data: Repository[] = await response.json();
           
-          // إذا وُجد اسم المستخدم، نقوم بتصفية المستودعات بحيث يعرض فقط الخاصة به
           if (currentUser) {
             const userRepos = data.filter(
               (repo) => repo.owner.toLowerCase() === currentUser.toLowerCase()
             );
             setRepositories(userRepos);
           } else {
-            // في حالة عدم تسجيل الدخول، يمكنك إرجاع قائمة فارغة أو البيانات كما هي
-            setRepositories([]);
+            setRepositories(data);
           }
         }
       } catch (err) {
