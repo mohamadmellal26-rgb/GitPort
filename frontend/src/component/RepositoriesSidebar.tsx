@@ -23,69 +23,63 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
   const [searchQuery, setSearchQuery] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
 
   const navigate = useNavigate();
 
-  // 1. استخراج اسم المستخدم من JWT Token أو me endpoint
   useEffect(() => {
-    const fetchCurrentUser = async () => {
+    const fetchUserDataAndRepos = async () => {
+      setLoading(true);
       const token = localStorage.getItem('token');
-      if (!token) return;
+      let username: string | null = null;
 
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/v1/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.user?.username) {
-            setCurrentUser(data.user.username);
-            return;
+      // 1. استخراج واكتشاف اسم المستخدم الحالي أولاً
+      if (token) {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/v1/me`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.user?.username) {
+              username = data.user.username;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to get user info from /me endpoint', e);
+        }
+
+        // Fallback: فك تشفير التوكن يدوياً في حال فشل طلب /me
+        if (!username) {
+          try {
+            const payloadBase64 = token.split('.')[1];
+            const decodedPayload = JSON.parse(atob(payloadBase64));
+            if (decodedPayload.username) {
+              username = decodedPayload.username;
+            }
+          } catch (err) {
+            console.error('Error parsing token payload:', err);
           }
         }
-      } catch (e) {
-        console.error('Failed to get user info from /me endpoint', e);
       }
 
-      // Fallback: فك تشفير التوكن يدوياً
+      // 2. جلب المستودعات وفلترتها مباشرة قبل إنهاء التحميل
       try {
-        const payloadBase64 = token.split('.')[1];
-        const decodedPayload = JSON.parse(atob(payloadBase64));
-        if (decodedPayload.username) {
-          setCurrentUser(decodedPayload.username);
-        }
-      } catch (err) {
-        console.error('Error parsing token payload:', err);
-      }
-    };
-
-    fetchCurrentUser();
-  }, []);
-
-  // 2. جلب المستودعات من الـ Backend
-  useEffect(() => {
-    const fetchRepositories = async () => {
-      try {
-        const token = localStorage.getItem('token');
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
         };
-
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const response = await fetch(`${API_BASE_URL}/api/v1/repositories`, {
-          headers,
-        });
+        const response = await fetch(`${API_BASE_URL}/api/v1/repositories`, { headers });
 
         if (response.ok) {
           const data: Repository[] = await response.json();
           
-          if (currentUser) {
+          if (username) {
+            // تصفية المستودعات بحيث تقتصر على مستودعات المستخدم فقط
             const userRepos = data.filter(
-              (repo) => repo.owner.toLowerCase() === currentUser.toLowerCase()
+              (repo) => repo.owner.toLowerCase() === username.toLowerCase()
             );
             setRepositories(userRepos);
           } else {
@@ -95,12 +89,12 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
       } catch (err) {
         console.error('Failed to fetch repositories:', err);
       } finally {
-        setLoading(false);
+        setLoading(false); // لا يتم إيقاف التحميل إلا بعد إتمام عملية التصفية
       }
     };
 
-    fetchRepositories();
-  }, [currentUser]);
+    fetchUserDataAndRepos();
+  }, []);
 
   const handleNewRepoClick = () => {
     if (onNewRepository) {
