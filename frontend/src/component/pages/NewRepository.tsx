@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import styles from './NewRepository.module.css';
 import Header from '../Header';
 
+// تحديد عنوان الـ API ديناميكيًا حسب البيئة
+const API_BASE_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8080' 
+  : 'https://gitport.onrender.com';
+
 export const NewRepository: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string>('');
   const [repoName, setRepoName] = useState('');
@@ -24,7 +29,7 @@ export const NewRepository: React.FC = () => {
       if (!token) return;
 
       try {
-        const response = await fetch('http://localhost:8080/api/v1/me', {
+        const response = await fetch(`${API_BASE_URL}/api/v1/me`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -75,7 +80,7 @@ export const NewRepository: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8080/api/v1/repositories', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/repositories`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

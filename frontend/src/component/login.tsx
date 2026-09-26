@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
 import styles from './Login.module.css';
 
+// تحديد عنوان الـ API تلقائياً بناءً على بيئة التشغيل
+const API_BASE_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8080' 
+  : 'https://gitport.onrender.com'; // ضع رابط سيرفرك على Render هنا
+
 export const Login: React.FC = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [username, setUsername] = useState('');
@@ -19,13 +24,13 @@ export const Login: React.FC = () => {
     setError(null);
 
     const cleanUsername = username.trim();
+    const cleanEmail = email.trim();
 
-    if (!cleanUsername || !password) {
-      setError('الرجاء إدخال اسم المستخدم وكلمة المرور.');
+    if (!cleanUsername || !password || (isSignUp && !cleanEmail)) {
+      setError('الرجاء إدخال جميع الحقول المطلوبة.');
       return;
     }
 
-    // فحص وصحة اسم المستخدم عند إنشاء الحساب لمنع # والرموز المسببة لمشاكل الـ URLs
     if (isSignUp) {
       if (cleanUsername.length < 3) {
         setError('اسم المستخدم يجب أن يتكون من 3 أحرف على الأقل.');
@@ -37,7 +42,6 @@ export const Login: React.FC = () => {
         return;
       }
 
-      // Regex يضمن فقط حروف وأرقام وشرطة (-)، ويمنع # وأي رمز مسبب لمشاكل الروابط
       const usernameRegex = /^[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*$/;
       if (!usernameRegex.test(cleanUsername)) {
         setError('اسم المستخدم يجب أن يحتوي فقط على أحرف إنجليزية، أرقام، أو شرطة (-)، بدون مسافات أو رموز خاصة مثل (#, ?, /).');
@@ -49,18 +53,25 @@ export const Login: React.FC = () => {
 
     try {
       const endpoint = isSignUp 
-        ? 'http://localhost:8080/api/v1/register' 
-        : 'http://localhost:8080/api/v1/login';
+        ? `${API_BASE_URL}/api/v1/register` 
+        : `${API_BASE_URL}/api/v1/login`;
+
+      // تجهيز البيانات المرسلة (إرسال الإيميل فقط في حالة التسجيل إذا كان السيرفر يطلبه)
+      const requestBody: any = {
+        username: cleanUsername,
+        password: password,
+      };
+
+      if (isSignUp) {
+        requestBody.email = cleanEmail;
+      }
 
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          username: cleanUsername,
-          password: password,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -69,7 +80,6 @@ export const Login: React.FC = () => {
         throw new Error(data.error || 'حدث خطأ أثناء الاتصال بالسيرفر');
       }
 
-      // حفظ الـ JWT Token وبيانات المستخدم في localStorage والتوجيه بأمان
       if (data.token) {
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
@@ -78,14 +88,13 @@ export const Login: React.FC = () => {
           await checkAuth();
         }
         
-        // استبدال الصفحة في تاريخ المتصفح لمنع التكرار والحلقات اللانهائية
         navigate('/', { replace: true });
       } else {
         throw new Error('لم يتم استلام رمز المصادقة من السيرفر');
       }
 
     } catch (err: any) {
-      setError(err.message || 'فشل الاتصال بالسيرفر على البورت 8080');
+      setError(err.message || 'فشل الاتصال بالسيرفر');
     } finally {
       setIsLoading(false);
     }

@@ -6,6 +6,11 @@ import Login from './component/login';
 import NewRepository from './component/pages/NewRepository';
 import RepositoryView from './component/pages/RepositoryView';
 
+// تحديد عنوان الـ API تلقائياً حسب بيئة التشغيل
+const API_BASE_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8080' 
+  : 'https://gitport.onrender.com';
+
 interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
@@ -28,6 +33,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return !!localStorage.getItem('token');
   });
 
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setIsAuthenticated(false);
+  };
+
   const checkAuth = async () => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -37,7 +48,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     try {
-      const response = await fetch('http://localhost:8080/api/v1/me', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/me`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -58,12 +69,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setIsAuthenticated(false);
-  };
-
   useEffect(() => {
     checkAuth();
   }, []);
@@ -75,7 +80,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// ✅ تصحيح النوع إلى React.ReactNode بدلاً من JSX.Element لحل مشكلة البناء
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
 
@@ -90,7 +94,6 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// ✅ تصحيح النوع إلى React.ReactNode بدلاً من JSX.Element لحل مشكلة البناء
 const PublicOnlyRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
 

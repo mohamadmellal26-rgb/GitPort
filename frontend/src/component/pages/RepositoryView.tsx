@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Header from '../Header';
 import styles from './RepositoryView.module.css';
+
+// تحديد عنوان الـ API تلقائياً حسب بيئة التشغيل
+const API_BASE_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8080' 
+  : 'https://gitport.onrender.com';
 
 interface RepositoryData {
   id: number;
@@ -51,13 +56,13 @@ export const RepositoryView: React.FC = () => {
     }
   }, []);
 
-  const fetchRepoDataAndFiles = async () => {
+  const fetchRepoDataAndFiles = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await fetch(`http://localhost:8080/api/v1/repositories/${owner}/${repo}`, { headers });
+      const response = await fetch(`${API_BASE_URL}/api/v1/repositories/${owner}/${repo}`, { headers });
       if (!response.ok) {
         setNotFound(true);
         return;
@@ -65,7 +70,7 @@ export const RepositoryView: React.FC = () => {
       const data = await response.json();
       setRepoData(data);
 
-      const filesRes = await fetch(`http://localhost:8080/api/v1/repositories/${owner}/${repo}/files`, { headers });
+      const filesRes = await fetch(`${API_BASE_URL}/api/v1/repositories/${owner}/${repo}/files`, { headers });
       if (filesRes.ok) {
         const filesData = await filesRes.json();
         setHasCommits(filesData.has_commits);
@@ -77,13 +82,13 @@ export const RepositoryView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [owner, repo]);
 
   useEffect(() => {
     if (owner && repo) {
       fetchRepoDataAndFiles();
     }
-  }, [owner, repo]);
+  }, [owner, repo, fetchRepoDataAndFiles]);
 
   // دالة فتح وقراءة الملف مع إضافة Timestamp لمنع الـ Caching
   const handleOpenFile = async (filePath: string) => {
@@ -95,7 +100,7 @@ export const RepositoryView: React.FC = () => {
 
     try {
       const response = await fetch(
-        `http://localhost:8080/api/v1/repositories/${owner}/${repo}/file-content?path=${encodeURIComponent(filePath)}&t=${Date.now()}`
+        `${API_BASE_URL}/api/v1/repositories/${owner}/${repo}/file-content?path=${encodeURIComponent(filePath)}&t=${Date.now()}`
       );
       if (response.ok) {
         const data = await response.json();
@@ -127,7 +132,7 @@ export const RepositoryView: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/repositories/${owner}/${repo}/save-file`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/repositories/${owner}/${repo}/save-file`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
