@@ -6,6 +6,7 @@ export interface Repository {
   id: string | number;
   owner: string;
   name: string;
+  is_private?: boolean;
   avatarUrl?: string;
 }
 
@@ -62,7 +63,7 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
         }
       }
 
-      // 2. جلب المستودعات وفلترتها مباشرة قبل إنهاء التحميل
+      // 2. جلب المستودعات مع إرفاق التوكن دائماً
       try {
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
@@ -77,9 +78,9 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
           const data: Repository[] = await response.json();
           
           if (username) {
-            // تصفية المستودعات بحيث تقتصر على مستودعات المستخدم فقط
+            // تصفية المستودعات بحيث تقتصر على مستودعات المستخدم الحالي (عامة وخاصة)
             const userRepos = data.filter(
-              (repo) => repo.owner.toLowerCase() === username.toLowerCase()
+              (repo) => repo.owner.toLowerCase() === username!.toLowerCase()
             );
             setRepositories(userRepos);
           } else {
@@ -89,7 +90,7 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
       } catch (err) {
         console.error('Failed to fetch repositories:', err);
       } finally {
-        setLoading(false); // لا يتم إيقاف التحميل إلا بعد إتمام عملية التصفية
+        setLoading(false);
       }
     };
 
@@ -157,6 +158,7 @@ export const RepositoriesSidebar: React.FC<RepositoriesSidebarProps> = ({ onNewR
               <Link to={`/${repo.owner}/${repo.name}`} className={styles.repoLink}>
                 <span className={styles.repoOwner}>{repo.owner}/</span>
                 <span className={styles.repoName}>{repo.name}</span>
+                {repo.is_private && <span style={{ marginLeft: '6px', fontSize: '11px', opacity: 0.7 }}>🔒</span>}
               </Link>
             </li>
           ))}
