@@ -94,7 +94,7 @@ export const RepositoryView: React.FC = () => {
     }
   }, [owner, repo, fetchRepoDataAndFiles]);
 
-  // فتح الملف وقراءته
+  // فتح الملف وقراءته (تم التعديل لإضافة هيدر التوثيق)
   const handleOpenFile = async (filePath: string) => {
     setSelectedFile(filePath);
     setIsEditing(false);
@@ -103,14 +103,23 @@ export const RepositoryView: React.FC = () => {
     setFileContent('');
 
     try {
+      const token = localStorage.getItem('token');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/repositories/${owner}/${repo}/file-content?path=${encodeURIComponent(filePath)}&t=${Date.now()}`
+        `${API_BASE_URL}/api/v1/repositories/${owner}/${repo}/file-content?path=${encodeURIComponent(filePath)}&t=${Date.now()}`,
+        { headers }
       );
+
       if (response.ok) {
         const data = await response.json();
         setFileContent(data.content);
       } else {
-        setFileContent('فشل فتح الملف أو لا يوجد محتوى.');
+        const errData = await response.json().catch(() => ({}));
+        setFileContent(errData.error || 'فشل فتح الملف أو لا يوجد محتوى.');
       }
     } catch (err) {
       console.error('Error fetching file content:', err);
