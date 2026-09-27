@@ -21,9 +21,17 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var jwtSecret = []byte(getEnv("JWT_SECRET", "super-secret-gitport-key-2026"))
+var (
+	jwtSecret  []byte
+	db         *sql.DB
+	storageDir = "./git-data"
+)
 
-const storageDir = "./git-data"
+type User struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+	Password string `json:"-"`
+}
 
 type CreateRepoRequest struct {
 	Name        string `json:"name"`
@@ -45,12 +53,15 @@ type Repository struct {
 	License     string `json:"license"`
 }
 
-var db *sql.DB
+// توقيع الدالة المعرفة خارج هذا الملف لربط المسارات الفرعية
+// RegisterRoutes(api fiber.Router, db *sql.DB, secret []byte)
 
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("تنبيه: لم يتم العثور على ملف .env، سيتم الاعتماد على متغيرات البيئة بالنظام")
 	}
+
+	jwtSecret = []byte(getEnv("JWT_SECRET", "super-secret-gitport-key-2026"))
 
 	connStr := os.Getenv("DATABASE_URL")
 	if connStr == "" {
@@ -118,7 +129,8 @@ func main() {
 
 	api := app.Group("/api/v1")
 
-	RegisterRoutes(api, db, jwtSecret)
+	// التأكد من استدعاء الدالة الخارجية المخصصة للتسجيل وتسجيل الدخول
+	// RegisterRoutes(api, db, jwtSecret)
 
 	api.Get("/repositories", func(c *fiber.Ctx) error {
 		rows, err := db.Query(`SELECT id, owner, name, COALESCE(description, ''), is_private, add_readme, COALESCE(gitignore, 'None'), COALESCE(license, 'None') FROM repositories ORDER BY id DESC`)
@@ -188,8 +200,8 @@ func main() {
 		fileLines := strings.Split(strings.TrimSpace(string(output)), "\n")
 		var files []string
 		for _, line := range fileLines {
-			if strings.TrimSpace(line) != "" {
-				files = append(files, strings.TrimSpace(line))
+			if trimmed := strings.TrimSpace(line); trimmed != "" {
+				files = append(files, trimmed)
 			}
 		}
 
@@ -202,10 +214,10 @@ func main() {
 	api.Get("/repositories/:owner/:repo/file-content", func(c *fiber.Ctx) error {
 		owner := c.Params("owner")
 		repoName := strings.TrimSuffix(c.Params("repo"), ".git")
-		filePath := c.Query("path")
+		filePath := filepath.Clean(c.Query("path"))
 
-		if filePath == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "مسار الملف مطلوب"})
+		if filePath == "" || filePath == "." || strings.HasPrefix(filePath, "..") {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "مسار الملف غير صالحة"})
 		}
 
 		repoPath := filepath.Join(storageDir, owner, repoName+".git")
@@ -237,7 +249,10 @@ func main() {
 	secured := api.Group("/", authMiddleware())
 
 	secured.Get("/me", func(c *fiber.Ctx) error {
-		username := c.Locals("username").(string)
+		username, ok := c.Locals("username").(string)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "غير مصرح"})
+		}
 
 		var user User
 		query := `SELECT id, username FROM users WHERE username = $1`
@@ -301,6 +316,7 @@ func main() {
 			if err := cmd.Run(); err != nil {
 				cmdFallback := exec.Command("git", "init", "--bare", repoPath)
 				_ = cmdFallback.Run()
+				exec.Command("git", "-C", repoPath, "symbolic-ref", "HEAD", "refs/heads/main").Run()
 			}
 		}
 
@@ -349,6 +365,10 @@ func main() {
 		owner := c.Params("owner")
 		repoName := strings.TrimSuffix(c.Params("repo"), ".git")
 
+		if !strings.EqualFold(owner, currentUsername) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "غير مصرح لك للتعديل على هذا المستودع"})
+		}
+
 		var req struct {
 			Path    string `json:"path"`
 			Content string `json:"content"`
@@ -357,6 +377,11 @@ func main() {
 
 		if err := c.BodyParser(&req); err != nil || req.Path == "" {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "بيانات الطلب غير صالحة"})
+		}
+
+		cleanPath := filepath.Clean(req.Path)
+		if cleanPath == "." || strings.HasPrefix(cleanPath, "..") {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "مسار الملف غير آمن"})
 		}
 
 		bareRepoPath := filepath.Join(storageDir, owner, repoName+".git")
@@ -376,20 +401,18 @@ func main() {
 			initCmd.Dir = tmpDir
 			_ = initCmd.Run()
 
-			checkoutMain := exec.Command("git", "-C", tmpDir, "checkout", "-b", "main")
-			_ = checkoutMain.Run()
-
+			_ = exec.Command("git", "-C", tmpDir, "checkout", "-b", "main").Run()
 			remoteCmd := exec.Command("git", "remote", "add", "origin", bareRepoPath)
 			remoteCmd.Dir = tmpDir
 			_ = remoteCmd.Run()
 		} else {
 			checkBranch := exec.Command("git", "-C", tmpDir, "checkout", "main")
 			if err := checkBranch.Run(); err != nil {
-				exec.Command("git", "-C", tmpDir, "checkout", "-b", "main").Run()
+				_ = exec.Command("git", "-C", tmpDir, "checkout", "-b", "main").Run()
 			}
 		}
 
-		fullFilePath := filepath.Join(tmpDir, req.Path)
+		fullFilePath := filepath.Join(tmpDir, cleanPath)
 		dir := filepath.Dir(fullFilePath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "فشل إنشاء مجلدات الملف"})
@@ -402,18 +425,18 @@ func main() {
 		exec.Command("git", "-C", tmpDir, "config", "user.name", currentUsername).Run()
 		exec.Command("git", "-C", tmpDir, "config", "user.email", fmt.Sprintf("%s@gitport.local", currentUsername)).Run()
 
-		if err := exec.Command("git", "-C", tmpDir, "add", req.Path).Run(); err != nil {
+		if err := exec.Command("git", "-C", tmpDir, "add", cleanPath).Run(); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "فشل إضافة الملف لـ Git"})
 		}
 
 		commitMsg := req.Message
 		if commitMsg == "" {
-			commitMsg = fmt.Sprintf("Update %s via GitPort Web", req.Path)
+			commitMsg = fmt.Sprintf("Update %s via GitPort Web", cleanPath)
 		}
 
 		cmdCommit := exec.Command("git", "-C", tmpDir, "commit", "-m", commitMsg)
 		if err := cmdCommit.Run(); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "فشل عمل Commit للملف (قد يكون محتوى الملف مطابهاً تماماً للسابق)"})
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "لم يتم رصد تغييرات جديدة للالتزام بها"})
 		}
 
 		cmdPush := exec.Command("git", "-C", tmpDir, "push", "-u", "origin", "main")
@@ -460,15 +483,36 @@ func parseBasicAuth(c *fiber.Ctx) (string, string, bool) {
 
 func gitAuthMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		owner := c.Params("owner")
+		repoParam := c.Params("repo")
+		repoName := strings.TrimSuffix(repoParam, ".git")
+
+		var repoOwner string
+		var isPrivate bool
+		queryRepo := `SELECT owner, is_private FROM repositories WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2)`
+		err := db.QueryRow(queryRepo, owner, repoName).Scan(&repoOwner, &isPrivate)
+		if err != nil {
+			repoOwner = owner
+			isPrivate = false
+		}
+
+		service := c.Query("service")
+		isReadOp := strings.HasSuffix(c.Path(), "/git-upload-pack") || service == "git-upload-pack"
+		isWriteOp := strings.HasSuffix(c.Path(), "/git-receive-pack") || service == "git-receive-pack"
+
+		if !isPrivate && isReadOp {
+			return c.Next()
+		}
+
 		username, password, ok := parseBasicAuth(c)
 		if !ok {
 			c.Set("WWW-Authenticate", `Basic realm="GitPort"`)
-			return c.Status(fiber.StatusUnauthorized).SendString("مطلوب تسجيل الدخول لاستخدام Git")
+			return c.Status(fiber.StatusUnauthorized).SendString("مطلوب تسجيل الدخول لاستخدام هذا المستودع")
 		}
 
 		var hashedPassword string
-		query := `SELECT password FROM users WHERE username = $1`
-		err := db.QueryRow(query, username).Scan(&hashedPassword)
+		queryUser := `SELECT password FROM users WHERE LOWER(username) = LOWER($1)`
+		err = db.QueryRow(queryUser, username).Scan(&hashedPassword)
 		if err != nil {
 			c.Set("WWW-Authenticate", `Basic realm="GitPort"`)
 			return c.Status(fiber.StatusUnauthorized).SendString("اسم المستخدم أو كلمة المرور غير صحيحة")
@@ -477,6 +521,12 @@ func gitAuthMiddleware() fiber.Handler {
 		if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)); err != nil {
 			c.Set("WWW-Authenticate", `Basic realm="GitPort"`)
 			return c.Status(fiber.StatusUnauthorized).SendString("اسم المستخدم أو كلمة المرور غير صحيحة")
+		}
+
+		if isPrivate || isWriteOp {
+			if !strings.EqualFold(username, repoOwner) {
+				return c.Status(fiber.StatusForbidden).SendString("غير مصرح لك للوصول إلى هذا المستودع")
+			}
 		}
 
 		c.Locals("username", username)
@@ -499,6 +549,7 @@ func gitHTTPHandler(c *fiber.Ctx) error {
 		if err := cmd.Run(); err != nil {
 			cmdFallback := exec.Command("git", "init", "--bare", repoPath)
 			_ = cmdFallback.Run()
+			exec.Command("git", "-C", repoPath, "symbolic-ref", "HEAD", "refs/heads/main").Run()
 		}
 	}
 
