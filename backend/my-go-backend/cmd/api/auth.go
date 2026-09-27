@@ -23,7 +23,7 @@ type User struct {
 }
 
 // RegisterRoutes يقوم بتسجيل مسارات المصادقة ضمن مجموعة الـ API
- func RegisterRoutes(api fiber.Router, db *sql.DB, jwtSecret []byte) {
+func RegisterRoutes(api fiber.Router, db *sql.DB, jwtSecret []byte) {
 	api.Post("/register", func(c *fiber.Ctx) error {
 		var req LoginRequest
 		if err := c.BodyParser(&req); err != nil {

@@ -27,12 +27,6 @@ var (
 	storageDir = "./git-data"
 )
 
-type User struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Password string `json:"-"`
-}
-
 type CreateRepoRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -52,9 +46,6 @@ type Repository struct {
 	Gitignore   string `json:"gitignore"`
 	License     string `json:"license"`
 }
-
-// توقيع الدالة المعرفة خارج هذا الملف لربط المسارات الفرعية
-// RegisterRoutes(api fiber.Router, db *sql.DB, secret []byte)
 
 func main() {
 	if err := godotenv.Load(); err != nil {
@@ -129,8 +120,8 @@ func main() {
 
 	api := app.Group("/api/v1")
 
-	// التأكد من استدعاء الدالة الخارجية المخصصة للتسجيل وتسجيل الدخول
-	// RegisterRoutes(api, db, jwtSecret)
+	// ربط مسارات التسجيل والدخول
+	RegisterRoutes(api, db, jwtSecret)
 
 	api.Get("/repositories", func(c *fiber.Ctx) error {
 		rows, err := db.Query(`SELECT id, owner, name, COALESCE(description, ''), is_private, add_readme, COALESCE(gitignore, 'None'), COALESCE(license, 'None') FROM repositories ORDER BY id DESC`)
