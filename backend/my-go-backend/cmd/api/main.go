@@ -27,10 +27,10 @@ var (
 	storageDir = "./git-data"
 )
 
-// User يُعرف هيكل المستخدم لاستخدامه في المسارات الداخلية
 type User struct {
 	ID       int    `json:"id"`
 	Username string `json:"username"`
+	Password string `json:"-"`
 }
 
 type CreateRepoRequest struct {
@@ -53,9 +53,12 @@ type Repository struct {
 	License     string `json:"license"`
 }
 
-// دالة افتراضية لاستدعاء RegisterRoutes إذا لم تكن معرفة في حزمة خارجية
-var RegisterRoutes = func(router fiber.Router, db *sql.DB, secret []byte) {
-	// يتم وضع مسارات auth الخاصة بك هنا
+func isSafePath(baseDir, targetPath string) bool {
+	rel, err := filepath.Rel(baseDir, targetPath)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..") && rel != ".."
 }
 
 func main() {
@@ -108,6 +111,12 @@ func main() {
 		log.Fatalf("فشل إنشاء جدول المستودعات: %v", err)
 	}
 
+	absStorageDir, err := filepath.Abs(storageDir)
+	if err != nil {
+		log.Fatalf("فشل تحديد المسار المطلق لمجلد التخزين: %v", err)
+	}
+	storageDir = absStorageDir
+
 	if err := os.MkdirAll(storageDir, 0755); err != nil {
 		log.Fatalf("فشل إنشاء مجلد المستودعات: %v", err)
 	}
@@ -131,11 +140,10 @@ func main() {
 
 	api := app.Group("/api/v1")
 
-	// ربط مسارات التسجيل والدخول
 	RegisterRoutes(api, db, jwtSecret)
 
 	api.Get("/repositories", func(c *fiber.Ctx) error {
-		rows, err := db.Query(`SELECT id, owner, name, COALESCE(description, ''), is_private, add_readme, COALESCE(gitignore, 'None'), COALESCE(license, 'None') FROM repositories ORDER BY id DESC`)
+		rows, err := db.Query(`SELECT id, owner, name, COALESCE(description, ''), is_private, add_readme, COALESCE(gitignore, 'None'), COALESCE(license, 'None') FROM repositories WHERE is_private = FALSE ORDER BY id DESC`)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "خطأ في جلب المستودعات"})
 		}
@@ -153,29 +161,19 @@ func main() {
 		return c.Status(fiber.StatusOK).JSON(repos)
 	})
 
-	api.Get("/repositories/:owner/:repo", func(c *fiber.Ctx) error {
-		owner := c.Params("owner")
-		repoName := c.Params("repo")
-
-		var r Repository
-		query := `SELECT id, owner, name, COALESCE(description, ''), is_private, add_readme, COALESCE(gitignore, 'None'), COALESCE(license, 'None')
-                  FROM repositories WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2)`
-
-		err := db.QueryRow(query, owner, repoName).Scan(
-			&r.ID, &r.Owner, &r.Name, &r.Description, &r.IsPrivate, &r.AddReadme, &r.Gitignore, &r.License,
-		)
-
-		if err != nil {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "المستودع غير موجود"})
-		}
-
+	api.Get("/repositories/:owner/:repo", checkRepoAccess(), func(c *fiber.Ctx) error {
+		r := c.Locals("repo_data").(Repository)
 		return c.Status(fiber.StatusOK).JSON(r)
 	})
 
-	api.Get("/repositories/:owner/:repo/files", func(c *fiber.Ctx) error {
-		owner := c.Params("owner")
-		repoName := strings.TrimSuffix(c.Params("repo"), ".git")
+	api.Get("/repositories/:owner/:repo/files", checkRepoAccess(), func(c *fiber.Ctx) error {
+		owner := strings.ToLower(c.Params("owner"))
+		repoName := strings.ToLower(strings.TrimSuffix(c.Params("repo"), ".git"))
 		repoPath := filepath.Join(storageDir, owner, repoName+".git")
+
+		if !isSafePath(storageDir, repoPath) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "مسار غير صالحة"})
+		}
 
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "المستودع غير موجود"})
@@ -213,9 +211,9 @@ func main() {
 		})
 	})
 
-	api.Get("/repositories/:owner/:repo/file-content", func(c *fiber.Ctx) error {
-		owner := c.Params("owner")
-		repoName := strings.TrimSuffix(c.Params("repo"), ".git")
+	api.Get("/repositories/:owner/:repo/file-content", checkRepoAccess(), func(c *fiber.Ctx) error {
+		owner := strings.ToLower(c.Params("owner"))
+		repoName := strings.ToLower(strings.TrimSuffix(c.Params("repo"), ".git"))
 		filePath := filepath.Clean(c.Query("path"))
 
 		if filePath == "" || filePath == "." || strings.HasPrefix(filePath, "..") {
@@ -223,6 +221,10 @@ func main() {
 		}
 
 		repoPath := filepath.Join(storageDir, owner, repoName+".git")
+		if !isSafePath(storageDir, repoPath) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "مسار غير صالحة"})
+		}
+
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "المستودع غير موجود"})
 		}
@@ -257,7 +259,7 @@ func main() {
 		}
 
 		var user User
-		query := `SELECT id, username FROM users WHERE username = $1`
+		query := `SELECT id, username FROM users WHERE LOWER(username) = LOWER($1)`
 		err := db.QueryRow(query, username).Scan(&user.ID, &user.Username)
 		if err != nil {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -276,7 +278,7 @@ func main() {
 	})
 
 	secured.Post("/repositories", func(c *fiber.Ctx) error {
-		username := c.Locals("username").(string)
+		username := strings.ToLower(c.Locals("username").(string))
 
 		var req CreateRepoRequest
 		if err := c.BodyParser(&req); err != nil {
@@ -312,13 +314,15 @@ func main() {
 			})
 		}
 
-		repoPath := filepath.Join(storageDir, username, repoName+".git")
-		if err := os.MkdirAll(repoPath, 0755); err == nil {
-			cmd := exec.Command("git", "init", "--bare", "--initial-branch=main", repoPath)
-			if err := cmd.Run(); err != nil {
-				cmdFallback := exec.Command("git", "init", "--bare", repoPath)
-				_ = cmdFallback.Run()
-				_ = exec.Command("git", "-C", repoPath, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+		repoPath := filepath.Join(storageDir, username, strings.ToLower(repoName)+".git")
+		if isSafePath(storageDir, repoPath) {
+			if err := os.MkdirAll(repoPath, 0755); err == nil {
+				cmd := exec.Command("git", "init", "--bare", "--initial-branch=main", repoPath)
+				if err := cmd.Run(); err != nil {
+					cmdFallback := exec.Command("git", "init", "--bare", repoPath)
+					_ = cmdFallback.Run()
+					_ = exec.Command("git", "-C", repoPath, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+				}
 			}
 		}
 
@@ -335,15 +339,15 @@ func main() {
 	})
 
 	secured.Delete("/repositories/:owner/:repo", func(c *fiber.Ctx) error {
-		currentUsername := c.Locals("username").(string)
-		owner := c.Params("owner")
-		repoName := c.Params("repo")
+		currentUsername := strings.ToLower(c.Locals("username").(string))
+		owner := strings.ToLower(c.Params("owner"))
+		repoName := strings.ToLower(c.Params("repo"))
 
-		if !strings.EqualFold(owner, currentUsername) {
+		if owner != currentUsername {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "غير مصرح لك بحذف مستودع لا يخصك"})
 		}
 
-		deleteQuery := `DELETE FROM repositories WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2)`
+		deleteQuery := `DELETE FROM repositories WHERE LOWER(owner) = $1 AND LOWER(name) = $2`
 		result, err := db.Exec(deleteQuery, owner, repoName)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "خطأ أثناء حذف المستودع"})
@@ -355,7 +359,9 @@ func main() {
 		}
 
 		repoPath := filepath.Join(storageDir, owner, repoName+".git")
-		_ = os.RemoveAll(repoPath)
+		if isSafePath(storageDir, repoPath) {
+			_ = os.RemoveAll(repoPath)
+		}
 
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"message": "تم حذف المستودع بنجاح",
@@ -363,11 +369,11 @@ func main() {
 	})
 
 	secured.Post("/repositories/:owner/:repo/save-file", func(c *fiber.Ctx) error {
-		currentUsername := c.Locals("username").(string)
-		owner := c.Params("owner")
-		repoName := strings.TrimSuffix(c.Params("repo"), ".git")
+		currentUsername := strings.ToLower(c.Locals("username").(string))
+		owner := strings.ToLower(c.Params("owner"))
+		repoName := strings.ToLower(strings.TrimSuffix(c.Params("repo"), ".git"))
 
-		if !strings.EqualFold(owner, currentUsername) {
+		if owner != currentUsername {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "غير مصرح لك للتعديل على هذا المستودع"})
 		}
 
@@ -387,6 +393,10 @@ func main() {
 		}
 
 		bareRepoPath := filepath.Join(storageDir, owner, repoName+".git")
+		if !isSafePath(storageDir, bareRepoPath) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "مسار غير آمن"})
+		}
+
 		if _, err := os.Stat(bareRepoPath); os.IsNotExist(err) {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "المستودع غير موجود"})
 		}
@@ -415,6 +425,10 @@ func main() {
 		}
 
 		fullFilePath := filepath.Join(tmpDir, cleanPath)
+		if !isSafePath(tmpDir, fullFilePath) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "مسار الملف المحقون غير آمن"})
+		}
+
 		dir := filepath.Dir(fullFilePath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "فشل إنشاء مجلدات الملف"})
@@ -464,6 +478,54 @@ func main() {
 	log.Fatal(app.Listen(fmt.Sprintf(":%s", port)))
 }
 
+func checkRepoAccess() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		owner := strings.ToLower(c.Params("owner"))
+		repoName := strings.ToLower(strings.TrimSuffix(c.Params("repo"), ".git"))
+
+		var r Repository
+		query := `SELECT id, owner, name, COALESCE(description, ''), is_private, add_readme, COALESCE(gitignore, 'None'), COALESCE(license, 'None')
+                  FROM repositories WHERE LOWER(owner) = $1 AND LOWER(name) = $2`
+
+		err := db.QueryRow(query, owner, repoName).Scan(
+			&r.ID, &r.Owner, &r.Name, &r.Description, &r.IsPrivate, &r.AddReadme, &r.Gitignore, &r.License,
+		)
+
+		if err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "المستودع غير موجود"})
+		}
+
+		if r.IsPrivate {
+			authHeader := c.Get("Authorization")
+			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "المستودع خاص، يتطلب تسجيل الدخول"})
+			}
+
+			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+			token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+				return jwtSecret, nil
+			})
+
+			if err != nil || !token.Valid {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "جلسة غير صالحة"})
+			}
+
+			claims, ok := token.Claims.(jwt.MapClaims)
+			if !ok {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "بيانات الجلسة غير صالحة"})
+			}
+
+			username, ok := claims["username"].(string)
+			if !ok || strings.ToLower(username) != strings.ToLower(r.Owner) {
+				return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "غير مصرح لك بالوصول لهذا المستودع الخاص"})
+			}
+		}
+
+		c.Locals("repo_data", r)
+		return c.Next()
+	}
+}
+
 func parseBasicAuth(c *fiber.Ctx) (string, string, bool) {
 	auth := c.Get("Authorization")
 	if auth == "" || !strings.HasPrefix(auth, "Basic ") {
@@ -485,13 +547,13 @@ func parseBasicAuth(c *fiber.Ctx) (string, string, bool) {
 
 func gitAuthMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		owner := c.Params("owner")
+		owner := strings.ToLower(c.Params("owner"))
 		repoParam := c.Params("repo")
-		repoName := strings.TrimSuffix(repoParam, ".git")
+		repoName := strings.ToLower(strings.TrimSuffix(repoParam, ".git"))
 
 		var repoOwner string
 		var isPrivate bool
-		queryRepo := `SELECT owner, is_private FROM repositories WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2)`
+		queryRepo := `SELECT owner, is_private FROM repositories WHERE LOWER(owner) = $1 AND LOWER(name) = $2`
 		err := db.QueryRow(queryRepo, owner, repoName).Scan(&repoOwner, &isPrivate)
 		if err != nil {
 			repoOwner = owner
@@ -513,8 +575,8 @@ func gitAuthMiddleware() fiber.Handler {
 		}
 
 		var hashedPassword string
-		queryUser := `SELECT password FROM users WHERE LOWER(username) = LOWER($1)`
-		err = db.QueryRow(queryUser, username).Scan(&hashedPassword)
+		queryUser := `SELECT password FROM users WHERE LOWER(username) = $1`
+		err = db.QueryRow(queryUser, strings.ToLower(username)).Scan(&hashedPassword)
 		if err != nil {
 			c.Set("WWW-Authenticate", `Basic realm="GitPort"`)
 			return c.Status(fiber.StatusUnauthorized).SendString("اسم المستخدم أو كلمة المرور غير صحيحة")
@@ -537,11 +599,15 @@ func gitAuthMiddleware() fiber.Handler {
 }
 
 func gitHTTPHandler(c *fiber.Ctx) error {
-	owner := c.Params("owner")
-	repo := c.Params("repo")
+	owner := strings.ToLower(c.Params("owner"))
+	repo := strings.ToLower(c.Params("repo"))
 
 	repoName := strings.TrimSuffix(repo, ".git")
 	repoPath := filepath.Join(storageDir, owner, repoName+".git")
+
+	if !isSafePath(storageDir, repoPath) {
+		return c.Status(fiber.StatusBadRequest).SendString("مسار غير آمن")
+	}
 
 	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(repoPath, 0755); err != nil {

@@ -16,13 +16,6 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-type User struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Password string `json:"-"`
-}
-
-// RegisterRoutes يقوم بتسجيل مسارات المصادقة ضمن مجموعة الـ API
 func RegisterRoutes(api fiber.Router, db *sql.DB, jwtSecret []byte) {
 	api.Post("/register", func(c *fiber.Ctx) error {
 		var req LoginRequest
@@ -30,7 +23,7 @@ func RegisterRoutes(api fiber.Router, db *sql.DB, jwtSecret []byte) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "البيانات غير صالحة"})
 		}
 
-		username := strings.TrimSpace(req.Username)
+		username := strings.ToLower(strings.TrimSpace(req.Username))
 		if len(username) < 3 || len(req.Password) < 6 {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "اسم المستخدم يجب ألا يقل عن 3 أحرف وكلمة المرور عن 6 أحرف"})
 		}
@@ -75,9 +68,9 @@ func RegisterRoutes(api fiber.Router, db *sql.DB, jwtSecret []byte) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "البيانات غير صالحة"})
 		}
 
-		username := strings.TrimSpace(req.Username)
+		username := strings.ToLower(strings.TrimSpace(req.Username))
 		var user User
-		query := `SELECT id, username, password FROM users WHERE username = $1`
+		query := `SELECT id, username, password FROM users WHERE LOWER(username) = $1`
 		err := db.QueryRow(query, username).Scan(&user.ID, &user.Username, &user.Password)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "اسم المستخدم أو كلمة المرور غير صحيحة"})
