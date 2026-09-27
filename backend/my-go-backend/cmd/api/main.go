@@ -27,6 +27,12 @@ var (
 	storageDir = "./git-data"
 )
 
+// User يُعرف هيكل المستخدم لاستخدامه في المسارات الداخلية
+type User struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+}
+
 type CreateRepoRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -45,6 +51,11 @@ type Repository struct {
 	AddReadme   bool   `json:"add_readme"`
 	Gitignore   string `json:"gitignore"`
 	License     string `json:"license"`
+}
+
+// دالة افتراضية لاستدعاء RegisterRoutes إذا لم تكن معرفة في حزمة خارجية
+var RegisterRoutes = func(router fiber.Router, db *sql.DB, secret []byte) {
+	// يتم وضع مسارات auth الخاصة بك هنا
 }
 
 func main() {
@@ -71,28 +82,28 @@ func main() {
 	}
 
 	createUsersTableQuery := `
-	CREATE TABLE IF NOT EXISTS users (
-		id SERIAL PRIMARY KEY,
-		username VARCHAR(50) UNIQUE NOT NULL,
-		password VARCHAR(255) NOT NULL
-	);`
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL
+    );`
 	if _, err := db.Exec(createUsersTableQuery); err != nil {
 		log.Fatalf("فشل إنشاء جدول المستخدمين: %v", err)
 	}
 
 	createReposTableQuery := `
-	CREATE TABLE IF NOT EXISTS repositories (
-		id SERIAL PRIMARY KEY,
-		owner VARCHAR(50) NOT NULL,
-		name VARCHAR(100) NOT NULL,
-		description TEXT,
-		is_private BOOLEAN DEFAULT FALSE,
-		add_readme BOOLEAN DEFAULT FALSE,
-		gitignore VARCHAR(50) DEFAULT 'None',
-		license VARCHAR(50) DEFAULT 'None',
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-		UNIQUE(owner, name)
-	);`
+    CREATE TABLE IF NOT EXISTS repositories (
+        id SERIAL PRIMARY KEY,
+        owner VARCHAR(50) NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        description TEXT,
+        is_private BOOLEAN DEFAULT FALSE,
+        add_readme BOOLEAN DEFAULT FALSE,
+        gitignore VARCHAR(50) DEFAULT 'None',
+        license VARCHAR(50) DEFAULT 'None',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(owner, name)
+    );`
 	if _, err := db.Exec(createReposTableQuery); err != nil {
 		log.Fatalf("فشل إنشاء جدول المستودعات: %v", err)
 	}
@@ -148,7 +159,7 @@ func main() {
 
 		var r Repository
 		query := `SELECT id, owner, name, COALESCE(description, ''), is_private, add_readme, COALESCE(gitignore, 'None'), COALESCE(license, 'None')
-				  FROM repositories WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2)`
+                  FROM repositories WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2)`
 
 		err := db.QueryRow(query, owner, repoName).Scan(
 			&r.ID, &r.Owner, &r.Name, &r.Description, &r.IsPrivate, &r.AddReadme, &r.Gitignore, &r.License,
@@ -279,10 +290,10 @@ func main() {
 
 		var repoID int
 		insertQuery := `
-			INSERT INTO repositories (owner, name, description, is_private, add_readme, gitignore, license)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-			RETURNING id;
-		`
+            INSERT INTO repositories (owner, name, description, is_private, add_readme, gitignore, license)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id;
+        `
 
 		err := db.QueryRow(
 			insertQuery,
@@ -307,7 +318,7 @@ func main() {
 			if err := cmd.Run(); err != nil {
 				cmdFallback := exec.Command("git", "init", "--bare", repoPath)
 				_ = cmdFallback.Run()
-				exec.Command("git", "-C", repoPath, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+				_ = exec.Command("git", "-C", repoPath, "symbolic-ref", "HEAD", "refs/heads/main").Run()
 			}
 		}
 
@@ -413,8 +424,8 @@ func main() {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "فشل حفظ الملف على القرص"})
 		}
 
-		exec.Command("git", "-C", tmpDir, "config", "user.name", currentUsername).Run()
-		exec.Command("git", "-C", tmpDir, "config", "user.email", fmt.Sprintf("%s@gitport.local", currentUsername)).Run()
+		_ = exec.Command("git", "-C", tmpDir, "config", "user.name", currentUsername).Run()
+		_ = exec.Command("git", "-C", tmpDir, "config", "user.email", fmt.Sprintf("%s@gitport.local", currentUsername)).Run()
 
 		if err := exec.Command("git", "-C", tmpDir, "add", cleanPath).Run(); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "فشل إضافة الملف لـ Git"})
@@ -438,7 +449,7 @@ func main() {
 			}
 		}
 
-		exec.Command("git", "-C", bareRepoPath, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+		_ = exec.Command("git", "-C", bareRepoPath, "symbolic-ref", "HEAD", "refs/heads/main").Run()
 
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "تم حفظ وتحديث الملف بنجاح"})
 	})
@@ -540,7 +551,7 @@ func gitHTTPHandler(c *fiber.Ctx) error {
 		if err := cmd.Run(); err != nil {
 			cmdFallback := exec.Command("git", "init", "--bare", repoPath)
 			_ = cmdFallback.Run()
-			exec.Command("git", "-C", repoPath, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+			_ = exec.Command("git", "-C", repoPath, "symbolic-ref", "HEAD", "refs/heads/main").Run()
 		}
 	}
 
@@ -549,7 +560,7 @@ func gitHTTPHandler(c *fiber.Ctx) error {
 
 		if strings.HasSuffix(r.URL.Path, "/info/refs") {
 			w.Header().Set("Content-Type", fmt.Sprintf("application/x-%s-advertisement", service))
-			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Cache-Control", "no-cache, max-age=0, must-revalidate")
 			w.WriteHeader(http.StatusOK)
 
 			packet := fmt.Sprintf("# service=%s\n", service)
@@ -572,7 +583,7 @@ func gitHTTPHandler(c *fiber.Ctx) error {
 
 		if subCmd != "" {
 			w.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-result", subCmd))
-			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Cache-Control", "no-cache, max-age=0, must-revalidate")
 			w.WriteHeader(http.StatusOK)
 
 			cmd := exec.Command("git", subCmd, "--stateless-rpc", repoPath)
